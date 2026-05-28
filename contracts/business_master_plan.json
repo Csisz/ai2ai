@@ -1,0 +1,53 @@
+{
+  "contract_id": "business_master_plan",
+  "title": "Business Master Plan",
+  "language": "hu",
+  "audience": "founders, product leaders, engineering leads, and go-to-market stakeholders",
+  "output_format": "markdown",
+  "deliverables": [
+    {
+      "id": "final_verdict",
+      "title": "Végső ítélet",
+      "required": true,
+      "source": "verdict",
+      "sections": []
+    },
+    {
+      "id": "business_plan",
+      "title": "Üzleti stratégia",
+      "required": true,
+      "source": "main",
+      "sections": [
+        {"id": "product_value", "title": "Termék és értékajánlat", "required": true},
+        {"id": "market_gtm", "title": "Piac és go-to-market", "required": true},
+        {"id": "business_model", "title": "Bevételi és működési modell", "required": true},
+        {"id": "competitive_position", "title": "Versenypozíció", "required": true},
+        {"id": "business_risks", "title": "Üzleti kockázatok", "required": true}
+      ]
+    },
+    {
+      "id": "implementation_plan",
+      "title": "Megvalósítási terv",
+      "required": true,
+      "source": "implementation",
+      "sections": [
+        {"id": "architecture_direction", "title": "Architektúra irány", "required": true},
+        {"id": "roadmap", "title": "Sprint roadmap", "required": true},
+        {"id": "definition_of_done", "title": "Definition of Done", "required": true}
+      ]
+    },
+    {
+      "id": "ai_context_block",
+      "title": "AI kontextus blokk",
+      "required": true,
+      "source": "ai_context",
+      "sections": []
+    }
+  ],
+  "required_metadata": [
+    "consensus_points",
+    "risk_register",
+    "decision_log",
+    "recommendations"
+  ]
+}

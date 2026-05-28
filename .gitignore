@@ -1,0 +1,50 @@
+cd "D:\Munka\AI2AI"
+
+@'
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Output folders
+eredmenyek/
+eredmenyek_*/
+*_test/
+output/
+outputs/
+logs/
+*.log
+
+# Generated artifacts
+debate_log.json
+debate_transcript.txt
+synthesis_output.md
+synthesis_output_meeting_report.md
+meeting_report.md
+
+# Local/source test material - keep private unless sanitized
+source/
+*.zip
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Documents that may contain private content
+*.docx
+*.pdf
+'@ | Set-Content .gitignore -Encoding UTF8

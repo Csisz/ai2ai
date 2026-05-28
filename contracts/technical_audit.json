@@ -1,0 +1,51 @@
+{
+  "contract_id": "technical_audit",
+  "title": "Technical Audit Report",
+  "language": "en",
+  "audience": "engineering leaders, architects, security reviewers, and delivery owners",
+  "output_format": "markdown",
+  "deliverables": [
+    {
+      "id": "final_verdict",
+      "title": "Audit verdict",
+      "required": true,
+      "source": "verdict",
+      "sections": []
+    },
+    {
+      "id": "technical_findings",
+      "title": "Technical findings",
+      "required": true,
+      "source": "main",
+      "sections": [
+        {"id": "architecture", "title": "Architecture assessment", "required": true},
+        {"id": "maintainability", "title": "Maintainability and code health", "required": true},
+        {"id": "security", "title": "Security and compliance risks", "required": true},
+        {"id": "operations", "title": "Operational readiness", "required": true}
+      ]
+    },
+    {
+      "id": "remediation_plan",
+      "title": "Remediation plan",
+      "required": true,
+      "source": "implementation",
+      "sections": [
+        {"id": "critical_fixes", "title": "Critical fixes", "required": true},
+        {"id": "near_term", "title": "Near-term hardening", "required": true},
+        {"id": "long_term", "title": "Long-term improvements", "required": true}
+      ]
+    },
+    {
+      "id": "ai_handoff",
+      "title": "AI handoff context",
+      "required": false,
+      "source": "ai_context",
+      "sections": []
+    }
+  ],
+  "required_metadata": [
+    "risk_register",
+    "decision_log",
+    "recommendations"
+  ]
+}

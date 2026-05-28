@@ -1,0 +1,30 @@
+A source mappában az AgentReady projekt teljes anyaga található:
+
+FORRÁSKÓD & PROJEKT:
+- agentready-hub-main.zip: a jelenlegi projekt teljes forráskódja és struktúrája
+
+TERVDOKUMENTUMOK:
+- AgentReady_Commercial_Audit_and_Development_Plan.docx: üzleti és audit fejlesztési terv
+- AgentReady_Commercial_Audit_and_Development_Plan.md: ugyanez markdown formátumban
+- AgentReady_Elemzes_Fejlesztesi_Terv.docx: elemzés és fejlesztési terv
+
+FELADAT:
+1. Vizsgáljátok meg a forráskódot (ZIP) és értsétek meg a jelenlegi projekt állapotát,
+   technikai felépítését, erősségeit és hiányosságait.
+
+2. Olvassátok át mindkét tervdokumentumot. Vitassátok meg:
+   - Melyik elemek reálisak és megvalósíthatók a jelenlegi kódbázis alapján?
+   - Hol vannak ellentmondások a két terv között?
+   - Mi hiányzik, mi felesleges, mi az amiben kompromisszum kell?
+
+3. A vita és az elemzés alapján készítsetek:
+   a) VÉGSŐ ÜZLETI TERV: piac, értékajánlat, bevételi modell, go-to-market,
+      versenyelőnyök — a kódbázis realitásaira alapozva
+   b) VÉGSŐ MEGVALÓSÍTÁSI TERV: konkrét fejlesztési lépések prioritás szerint,
+      technikai architektúra javaslat, sprint bontás, kockázatok
+   c) AI KONTEXTUS MARKDOWN: tömör összefoglaló amit AI modelleknek
+      (Claude, GPT, Gemini) system promptba vagy kontextusba lehet csatolni,
+      hogy azonnal értsék a projekt állapotát és céljait
+
+Legyetek kritikusak de kompromisszumkészek. Ha valamiben nem értetek egyet,
+hozzatok fel érveket és keressetek közös álláspontot.

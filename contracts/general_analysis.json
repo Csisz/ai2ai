@@ -1,0 +1,43 @@
+{
+  "contract_id": "general_analysis",
+  "title": "General Analysis",
+  "language": "hu",
+  "audience": "decision makers and reviewers",
+  "output_format": "markdown",
+  "deliverables": [
+    {
+      "id": "final_verdict",
+      "title": "Summary verdict",
+      "required": true,
+      "source": "verdict",
+      "sections": []
+    },
+    {
+      "id": "analysis",
+      "title": "Analysis",
+      "required": true,
+      "source": "main",
+      "sections": [
+        {"id": "context", "title": "Context", "required": true},
+        {"id": "key_findings", "title": "Key findings", "required": true},
+        {"id": "tradeoffs", "title": "Tradeoffs", "required": false},
+        {"id": "open_questions", "title": "Open questions", "required": false}
+      ]
+    },
+    {
+      "id": "next_actions",
+      "title": "Recommended next actions",
+      "required": true,
+      "source": "implementation",
+      "sections": [
+        {"id": "actions", "title": "Actions", "required": true},
+        {"id": "owners", "title": "Owners and sequencing", "required": false}
+      ]
+    }
+  ],
+  "required_metadata": [
+    "consensus_points",
+    "open_issues",
+    "recommendations"
+  ]
+}
