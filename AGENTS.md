@@ -160,12 +160,10 @@ After behavior changes, run the relevant regression set:
 ```powershell
 python -B ai_debate.py --smoke-test
 
-python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --no-docx --output-dir .\eredmenyek_regression_default --synthesis-max-output-tokens 8000
-
-python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --contract-file .\contracts\business_master_plan.json --no-docx --output-dir .\eredmenyek_regression_business --synthesis-max-output-tokens 8000
-
-python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --contract-file .\contracts\technical_audit.json --no-docx --output-dir .\eredmenyek_regression_technical --synthesis-max-output-tokens 8000
+python -B ai_debate.py --regression-test
 ```
+
+The regression gate runs the smoke test, task-profile-only mode, default full run, business contract run, technical contract run, artifact checks, validation-status checks, ingestion metadata checks, meeting-report source summary checks, and the technical `## Audit verdict` heading-count check.
 
 For documentation-only changes, `python -B ai_debate.py --smoke-test` is usually enough unless the docs change command examples in a way that needs validation.
 

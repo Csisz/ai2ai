@@ -4410,22 +4410,38 @@ def _markdown_truncation_warnings(text: str) -> list[str]:
     return warnings
 
 def _short_heading_content_warnings(markdown: str) -> list[str]:
-    lines = _lines_outside_code_fences((markdown or "").splitlines())
-    headings = [(i, ln.strip()) for i, ln in enumerate(lines) if ln.strip().startswith("#")]
+    lines = (markdown or "").splitlines()
+    headings = []
+    in_fence = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence and stripped.startswith("#"):
+            headings.append((i, stripped))
     warnings = []
     for idx, (start, heading) in enumerate(headings):
         level = len(heading) - len(heading.lstrip("#"))
         if level > 4:
             continue
         end = len(lines)
+        in_fence = False
         for j in range(start + 1, len(lines)):
             stripped = lines[j].strip()
-            if stripped.startswith("#"):
+            if stripped.startswith("```"):
+                in_fence = not in_fence
+                continue
+            if not in_fence and stripped.startswith("#"):
                 next_level = len(stripped) - len(stripped.lstrip("#"))
                 if next_level <= level:
                     end = j
                     break
-        content = "\n".join(lines[start + 1:end]).strip()
+        content_lines = [
+            ln for ln in lines[start + 1:end]
+            if not ln.strip().startswith("```")
+        ]
+        content = "\n".join(content_lines).strip()
         if len(content.split()) < 5:
             label = heading.lstrip("#").strip().lower().replace(" ", "_")[:40]
             warnings.append(f"heading_too_little_content:{label}")
@@ -4506,10 +4522,16 @@ def _is_completed_list_item_before_heading(line: str) -> bool:
         return False
     if _ends_like_complete_sentence(item) or _line_ends_with_closed_inline_code_span(item):
         return True
-    if len(item.split()) < 3:
+    words = item.split()
+    if len(words) < 2:
+        return False
+    last_word = words[-1].strip(".,;:!?)]}â€ť\"'`").lower()
+    if item.endswith(("...", "â€¦")):
+        return False
+    if any(last_word.endswith(sfx) for sfx in ("eszk", "funk", "valid", "integr", "konfig", "architekt", "implement")):
         return False
     return (
-        not _looks_mid_word_ending(item)
+        True
     )
 
 def _line_allows_heading_transition(previous_line: str, heading_line: str) -> bool:
@@ -5846,10 +5868,23 @@ Keep this fenced prompt intact.
 """
     fence_warnings = contract_engine._truncation_warnings(fenced_prompt)
     checks.append(("balanced fenced code block does not trigger truncation warning", "possible_mid_word_ending" not in fence_warnings and not any("task_1_" in w for w in fence_warnings)))
+    fenced_heading_content = """## Short project summary
+
+```markdown
+This fenced summary contains enough meaningful content to count as the body of this heading.
+```
+
+## Next heading
+
+This next heading also has enough normal body content for validation.
+"""
+    checks.append(("fenced content counts for heading length validation", not any(w.startswith("heading_too_little_content:short_project_summary") for w in contract_engine._truncation_warnings(fenced_heading_content))))
     bold_heading_transition = "5. **only then expand into enterprise features or stronger automation claims.**\n\n### Risk judgment\n\n- Concrete risk item with enough words for validation."
     checks.append(("bold sentence before heading is not abrupt truncation", "abrupt_transition_before_heading" not in contract_engine._truncation_warnings(bold_heading_transition)))
     short_complete_bullet_transition = "- gyors demonstrálhatóság.\n\n#### Fő korlátok\n\n- Concrete risk item with enough words for validation."
     checks.append(("short complete bullet before heading is not abrupt truncation", "abrupt_transition_before_heading" not in contract_engine._truncation_warnings(short_complete_bullet_transition)))
+    short_fragment_bullet_transition = "- structured repo-context export\n\n### Current state\n\n- Concrete state item with enough words for validation."
+    checks.append(("short complete fragment bullet before heading is not abrupt truncation", "abrupt_transition_before_heading" not in contract_engine._truncation_warnings(short_fragment_bullet_transition)))
     colon_before_nested_heading = "A phased market entry model is recommended:\n\n#### Phase 1\n\n- Concrete phase item with enough words for validation."
     checks.append(("colon before nested heading is not abrupt truncation", "abrupt_transition_before_heading" not in contract_engine._truncation_warnings(colon_before_nested_heading)))
     nested_handoff_transition = """AgentReady should be treated as a pre-production prototype with realistic limits.
@@ -6195,6 +6230,8 @@ Peldak:
                    help="Final Judge max output token (env: SYNTHESIS_MAX_OUTPUT_TOKENS)")
     p.add_argument("--smoke-test", action="store_true",
                    help="Lokalis smoke test API hivas nelkul")
+    p.add_argument("--regression-test", action="store_true",
+                   help="Run the full local regression quality gate")
     p.add_argument("--task-profile-only", action="store_true",
                    help="Forras/prompt betoltes es TaskProfile generalas vita nelkul")
     p.add_argument("--contract-file", metavar="CONTRACT.json",
@@ -6206,6 +6243,9 @@ Peldak:
 
     if args.smoke_test:
         raise SystemExit(run_smoke_test())
+    if args.regression_test:
+        from ai2ai.quality.regression import main as run_regression_test
+        raise SystemExit(run_regression_test())
 
     if args.list_scenarios:
         print("Available scenarios:")

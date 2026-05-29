@@ -36,6 +36,12 @@ Smoke test:
 python -B ai_debate.py --smoke-test
 ```
 
+Regression test:
+
+```powershell
+python -B ai_debate.py --regression-test
+```
+
 ## Common CLI Options
 
 | Option | Purpose |
@@ -53,6 +59,7 @@ python -B ai_debate.py --smoke-test
 | `--contract-file PATH` | Load a JSON OutputContract. |
 | `--synthesis-max-output-tokens N` | Set synthesis output token budget. |
 | `--smoke-test` | Run local smoke tests without provider calls. |
+| `--regression-test` | Run the full regression quality gate. |
 
 ## Output Files
 
@@ -113,24 +120,47 @@ Verified through Sprint 3.5:
 - Sprint 3.5: safe modularization into the `ai2ai/` package.
 - Sprint 3.6: documentation sync after modularization.
 
-## Regression Commands
+## Regression Test
 
-Run after behavior changes:
+Run after behavior-changing changes and before commits:
 
 ```powershell
 python -B ai_debate.py --smoke-test
 ```
 
 ```powershell
-python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --no-docx --output-dir .\eredmenyek_regression_default --synthesis-max-output-tokens 8000
+python -B ai_debate.py --regression-test
 ```
 
-```powershell
-python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --contract-file .\contracts\business_master_plan.json --no-docx --output-dir .\eredmenyek_regression_business --synthesis-max-output-tokens 8000
-```
+The regression runner executes the known quality gate:
+- smoke test,
+- task-profile-only run,
+- default quick full run,
+- `business_master_plan` contract run,
+- `technical_audit` contract run,
+- generated artifact existence checks,
+- bad-pattern checks in `synthesis_output.md`,
+- final/human validation status checks in `debate_log.json`,
+- ingestion metadata checks for repo map, redaction summary, and important files,
+- meeting report source/ingestion summary checks,
+- exact `## Audit verdict` heading count check for the technical audit output.
+
+It writes to dedicated folders:
+- `eredmenyek_regression_profile`
+- `eredmenyek_regression_default`
+- `eredmenyek_regression_business`
+- `eredmenyek_regression_technical`
+
+Expected success output ends with:
 
 ```powershell
-python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --contract-file .\contracts\technical_audit.json --no-docx --output-dir .\eredmenyek_regression_technical --synthesis-max-output-tokens 8000
+REGRESSION TEST PASSED
+```
+
+The PowerShell shortcut does the same thing from the repo root:
+
+```powershell
+.\scripts\regression.ps1
 ```
 
 For documentation-only changes, the smoke test is usually sufficient.
