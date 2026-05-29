@@ -1,0 +1,39 @@
+{
+  "scenario_id": "red-team",
+  "description": "1 strategist + 1 engineer + 2 skeptics + judge for high-risk decisions.",
+  "phases": ["evidence", "independent", "issue_matrix", "rebuttal", "revision", "judge"],
+  "roles": ["moderator", "strategist", "engineer", "skeptic", "skeptic2", "judge"],
+  "default_role_models": {
+    "fast": {
+      "moderator": "claude-sonnet",
+      "strategist": "gpt-fast",
+      "engineer": "claude-sonnet",
+      "skeptic": "grok",
+      "skeptic2": "deepseek",
+      "judge": "gpt-fast"
+    },
+    "balanced": {
+      "moderator": "claude-sonnet",
+      "strategist": "gpt",
+      "engineer": "claude-sonnet",
+      "skeptic": "grok",
+      "skeptic2": "deepseek",
+      "judge": "gpt"
+    },
+    "best": {
+      "moderator": "claude-sonnet",
+      "strategist": "gpt-best",
+      "engineer": "claude-opus",
+      "skeptic": "grok-best",
+      "skeptic2": "deepseek-pro",
+      "judge": "claude-opus"
+    }
+  },
+  "judge_role": "judge",
+  "moderator_role": "moderator",
+  "debate_participant_roles": ["strategist", "engineer", "skeptic", "skeptic2"],
+  "minimum_required_debate_participants": 2,
+  "synthesis_mode": "default",
+  "default_contract_id": "default_business_master_plan",
+  "notes": "Preserves the original red-team behavior."
+}

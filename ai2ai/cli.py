@@ -50,6 +50,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from ai2ai.core.scenarios import (
+    ScenarioConfigError,
+    available_scenario_ids,
+    format_scenario_summary,
+    normalize_quality,
+    resolve_scenario,
+    scenario_summary,
+    scenario_to_legacy,
+)
+
 for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(errors="replace")
@@ -194,6 +204,7 @@ def _build_catalog():
     }
 
 CATALOG = _build_catalog()
+RESOLVED_SCENARIO_CACHE = {}
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Scenario definĂ­ciĂłk
@@ -586,6 +597,8 @@ def save_task_profile_only(profile: TaskProfile | dict, out_dir: str, user_promp
             "output_contract": output_contract_summary(output_contract),
         },
     }
+    if RUN_METADATA.get("resolved_scenario"):
+        payload["metadata"]["resolved_scenario"] = RUN_METADATA["resolved_scenario"]
     Path(os.path.join(out_dir, "debate_log.json")).write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -916,10 +929,48 @@ def _abort(message: str):
     print(f"\nERROR: {message}")
     raise SystemExit(2)
 
+def _scenario_cache_key(scenario_key: str, quality: str, role_overrides: dict | None) -> tuple:
+    return (
+        scenario_key,
+        normalize_quality(quality),
+        tuple(sorted((role_overrides or {}).items())),
+    )
+
+def _resolve_scenario_or_abort(scenario_key: str, quality: str,
+                               role_overrides: dict | None = None) -> dict:
+    quality = normalize_quality(quality)
+    key = _scenario_cache_key(scenario_key, quality, role_overrides)
+    if key in RESOLVED_SCENARIO_CACHE:
+        return RESOLVED_SCENARIO_CACHE[key]
+    try:
+        resolved = resolve_scenario(
+            scenario_key,
+            quality,
+            role_overrides or {},
+            set(CATALOG.keys()),
+            builtin_scenarios=SCENARIOS,
+        )
+    except ScenarioConfigError as exc:
+        _abort(str(exc))
+    RESOLVED_SCENARIO_CACHE[key] = resolved
+    # Keep legacy lookups working while newer code consumes resolved metadata.
+    SCENARIOS[scenario_key] = scenario_to_legacy(resolved)
+    return resolved
+
+def _resolved_scenario_for_metadata(scenario_key: str, quality: str,
+                                    role_overrides: dict | None = None) -> dict:
+    return scenario_summary(_resolve_scenario_or_abort(scenario_key, quality, role_overrides))
+
 def _participant_roles(engines: dict) -> list[str]:
     return [k for k in engines if k not in INFRASTRUCTURE_ROLES]
 
 def _required_participant_count(scenario_key: str) -> int:
+    for resolved in RESOLVED_SCENARIO_CACHE.values():
+        if resolved.get("scenario_id") == scenario_key:
+            return int(resolved.get("minimum_required_debate_participants") or MIN_VALID_PARTICIPANTS)
+    scenario = SCENARIOS.get(scenario_key, {})
+    if scenario.get("minimum_required_debate_participants"):
+        return int(scenario["minimum_required_debate_participants"])
     if scenario_key == "quick":
         return 2
     return MIN_VALID_PARTICIPANTS
@@ -1321,9 +1372,9 @@ def build_roles(scenario_key: str, quality: str, role_overrides: dict) -> dict[s
     Visszaad: {role_name: AIEngine}
     role_overrides: {"judge": "gpt", "skeptic": "deepseek", ...}
     """
-    scenario = SCENARIOS[scenario_key]
-    base = dict(scenario["quality_map"][quality])
-    base.update(role_overrides)  # felĂĽlĂ­rĂˇsok Ă©rvĂ©nyesĂ­tĂ©se
+    quality = normalize_quality(quality)
+    resolved_scenario = _resolve_scenario_or_abort(scenario_key, quality, role_overrides)
+    base = dict(resolved_scenario["active_role_models"])
 
     engines = {}
     print(f"\nđź”Ś Szerepek Ă©s modellek ({scenario_key} | {quality}):")
@@ -1379,6 +1430,14 @@ def run_health_checks(engines: dict, skip_network: bool = False) -> dict:
     return health
 
 def _fallback_candidates_for(role: str, eng: AIEngine) -> list[str]:
+    for resolved in RESOLVED_SCENARIO_CACHE.values():
+        role_info = (resolved.get("role_definitions") or {}).get(role) or {}
+        configured = [
+            mk for mk in role_info.get("fallback_model_keys", [])
+            if mk in CATALOG and mk != eng.key
+        ]
+        if configured:
+            return configured
     if role in ("judge", "moderator"):
         base = ROLE_FALLBACKS[role]
     else:
@@ -2226,17 +2285,28 @@ Every required section must be non-empty, specific, and evidence-grounded."""
 
     def _strip_duplicate_deliverable_headings(self, markdown: str, title: str) -> str:
         """Remove generated headings that duplicate the assembler-owned deliverable heading."""
-        target = " ".join((title or "").strip().lower().split())
-        if not target:
+        if not self._heading_duplicates_deliverable_title(title, title):
             return (markdown or "").strip()
         kept = []
         for line in (markdown or "").splitlines():
             stripped = line.strip()
             match = re.match(r"^#{1,6}\s+(.+?)\s*$", stripped)
-            if match and " ".join(match.group(1).strip().lower().split()) == target:
+            if match and self._heading_duplicates_deliverable_title(match.group(1), title):
                 continue
             kept.append(line)
         return "\n".join(kept).strip()
+
+    def _heading_duplicates_deliverable_title(self, heading: str, title: str) -> bool:
+        target = self._normalized_heading_words(title)
+        candidate = self._normalized_heading_words(heading)
+        if not target or not candidate:
+            return False
+        return candidate == target or candidate.startswith(f"{target} ")
+
+    def _normalized_heading_words(self, text: str) -> str:
+        normalized = re.sub(r"[*_`]+", "", text or "").strip().lower()
+        normalized = re.sub(r"[^\w]+", " ", normalized, flags=re.UNICODE)
+        return " ".join(normalized.split())
 
     def _join_contract_source(self, deliverable_results: dict, source: str) -> str:
         parts = []
@@ -4707,6 +4777,21 @@ def save_meeting_report(session_log: list, revisions: dict, synthesis: dict,
             "---",
             "",
         ]
+    resolved_scenario = RUN_METADATA.get("resolved_scenario", {})
+    if resolved_scenario:
+        active_roles = resolved_scenario.get("active_role_models", {})
+        lines += [
+            "## Scenario",
+            "",
+            f"- **scenario_id:** {resolved_scenario.get('scenario_id', 'unknown')}",
+            f"- **phases:** {' -> '.join(resolved_scenario.get('phases') or [])}",
+            f"- **active_roles:** {', '.join(active_roles.keys())}",
+            f"- **participant_roles:** {', '.join(resolved_scenario.get('debate_participant_roles') or [])}",
+            f"- **judge:** {resolved_scenario.get('judge_role', 'unknown')}",
+            "",
+            "---",
+            "",
+        ]
     contract = synthesis.get("output_contract") or RUN_METADATA.get("output_contract", {})
     if contract:
         deliverable_titles = [
@@ -5077,12 +5162,12 @@ def save_logs(session_log, out_dir, user_prompt):
 
 
 def estimate_cost(items, scenario_key, quality, role_overrides):
-    scenario = SCENARIOS[scenario_key]
-    base = dict(scenario["quality_map"][quality])
-    base.update(role_overrides)
+    quality = normalize_quality(quality)
+    resolved_scenario = _resolve_scenario_or_abort(scenario_key, quality, role_overrides)
+    base = dict(resolved_scenario["active_role_models"])
     total_chars = sum(len(i.text) for i in items if not i.is_img())
     ctx_tok = total_chars // 4
-    phases = scenario["phases"]
+    phases = resolved_scenario["phases"]
 
     print(_bold("\nđź’° KĂ–LTSĂ‰GBECSLĂ‰S"))
     print("â”€"*56)
@@ -5133,6 +5218,35 @@ def run_smoke_test() -> int:
     checks.append(("normal response accepted", _valid_response("OK - short useful answer")))
     checks.append(("synthesis token budget configured", SYNTHESIS_MAX_OUTPUT_TOKENS > 0))
     checks.append(("minimum participant count configured", MIN_VALID_PARTICIPANTS >= 1))
+    scenario_ids = available_scenario_ids(SCENARIOS)
+    checks.append(("scenario config files load", {"quick", "expert-council", "general-council", "red-team", "build-plan"}.issubset(set(scenario_ids))))
+    quick_resolved = _resolve_scenario_or_abort("quick", "fast", {})
+    expert_resolved = _resolve_scenario_or_abort("expert-council", "fast", {})
+    general_resolved = _resolve_scenario_or_abort("general-council", "fast", {})
+    checks.append(("quick scenario resolves", quick_resolved["minimum_required_debate_participants"] == 2 and quick_resolved["active_role_models"]["debater2"] == "gemini-fast"))
+    checks.append(("expert-council resolves", "issue_matrix" in expert_resolved["phases"] and "strategist" in expert_resolved["debate_participant_roles"]))
+    checks.append(("general-council resolves", general_resolved["scenario_id"] == "general-council" and "generalist" in general_resolved["roles"]))
+    checks.append(("--list-scenarios works", "quick" in scenario_ids and "general-council" in scenario_ids))
+    checks.append(("--scenario-info quick works", "Scenario: quick" in format_scenario_summary(quick_resolved, full=True)))
+    override_resolved = _resolve_scenario_or_abort("quick", "fast", {"judge": "claude-sonnet"})
+    checks.append(("--roles override still works", override_resolved["active_role_models"]["judge"] == "claude-sonnet"))
+    missing_tmp = tempfile.mkdtemp(prefix="scenario_missing_smoke_")
+    invalid_tmp = tempfile.mkdtemp(prefix="scenario_invalid_smoke_")
+    try:
+        missing_fallback = resolve_scenario("quick", "fast", {}, set(CATALOG.keys()), builtin_scenarios=SCENARIOS, config_root=Path(missing_tmp))
+        checks.append(("missing config falls back safely only where intended", missing_fallback["fallback_used"] is True and missing_fallback["scenario_id"] == "quick"))
+        bad_dir = Path(invalid_tmp) / "scenarios"
+        bad_dir.mkdir(parents=True, exist_ok=True)
+        (bad_dir / "broken.json").write_text('{"scenario_id":"broken"}', encoding="utf-8")
+        invalid_failed = False
+        try:
+            resolve_scenario("broken", "fast", {}, set(CATALOG.keys()), builtin_scenarios={}, config_root=Path(invalid_tmp))
+        except ScenarioConfigError:
+            invalid_failed = True
+        checks.append(("invalid scenario config fails clearly", invalid_failed))
+    finally:
+        shutil.rmtree(missing_tmp, ignore_errors=True)
+        shutil.rmtree(invalid_tmp, ignore_errors=True)
 
     business_profile = build_task_profile(
         "KĂ©szĂ­ts ĂĽzleti tervet, GTM stratĂ©giĂˇt Ă©s megvalĂłsĂ­tĂˇsi tervet egy AI termĂ©khez.",
@@ -5183,15 +5297,24 @@ def run_smoke_test() -> int:
             invalid_stopped = e.code == 2
         checks.append(("invalid contract fails with clear error", invalid_stopped))
 
+        previous_resolved_scenario = RUN_METADATA.get("resolved_scenario")
+        RUN_METADATA["resolved_scenario"] = scenario_summary(quick_resolved)
         save_task_profile_only(business_profile, profile_tmp, business_profile.user_goal, business_contract)
+        if previous_resolved_scenario is None:
+            RUN_METADATA.pop("resolved_scenario", None)
+        else:
+            RUN_METADATA["resolved_scenario"] = previous_resolved_scenario
         profile_path = Path(profile_tmp) / "task_profile.json"
         log_path = Path(profile_tmp) / "debate_log.json"
         saved_profile = json.loads(profile_path.read_text(encoding="utf-8"))
         saved_log = json.loads(log_path.read_text(encoding="utf-8"))
         checks.append(("--task-profile-only mode", saved_profile.get("task_type") == "business_strategy" and saved_log.get("metadata", {}).get("task_profile", {}).get("task_type") == "business_strategy"))
         checks.append(("contract summary is stored in debate_log.json", saved_log.get("metadata", {}).get("output_contract", {}).get("contract_id") == "business_master_plan"))
+        checks.append(("resolved scenario is stored in debate_log.json", saved_log.get("metadata", {}).get("resolved_scenario", {}).get("scenario_id") == "quick"))
 
         report_path = Path(profile_tmp) / "meeting_report.md"
+        previous_resolved_scenario = RUN_METADATA.get("resolved_scenario")
+        RUN_METADATA["resolved_scenario"] = scenario_summary(quick_resolved)
         save_meeting_report(
             [],
             {},
@@ -5211,8 +5334,13 @@ def run_smoke_test() -> int:
             business_profile.user_goal,
             str(report_path),
         )
+        if previous_resolved_scenario is None:
+            RUN_METADATA.pop("resolved_scenario", None)
+        else:
+            RUN_METADATA["resolved_scenario"] = previous_resolved_scenario
         report_text = report_path.read_text(encoding="utf-8")
         checks.append(("contract summary appears in meeting_report.md", "## OutputContract" in report_text and "technical_audit" in report_text))
+        checks.append(("scenario summary appears in meeting_report.md", "## Scenario" in report_text and "scenario_id" in report_text and "quick" in report_text))
     finally:
         shutil.rmtree(profile_tmp, ignore_errors=True)
 
@@ -5440,7 +5568,7 @@ A kockĂˇzatok Ă©s dĂ¶ntĂ©sek rĂ©sz legalĂˇbb rĂ¶viden szerepel.
             "required": True, "sections": [],
             "markdown": """The AgentReady codebase is usable, but it needs focused reliability hardening before broader expansion.
 
-## Audit verdict
+## Audit Verdict - AgentReady Hub
 
 **Overall assessment:** the highest-priority risks are contract validation drift, provider failure handling, and incomplete audit remediation sections.
 
@@ -5781,6 +5909,7 @@ This section was not completed""",
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def main():
     global SYNTHESIS_MAX_OUTPUT_TOKENS
+    scenario_ids = available_scenario_ids(SCENARIOS)
     p = argparse.ArgumentParser(
         description="Expert Council â€” Multi-AI strukturĂˇlt vita, 5 fĂˇzis.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -5805,12 +5934,17 @@ Peldak:
     pp.add_argument("--prompt-file", metavar="FAJL")
     p.add_argument("--scenario",
                    default=os.environ.get("DEFAULT_SCENARIO","quick"),
-                   choices=list(SCENARIOS.keys()),
+                   choices=scenario_ids,
                    help="Vita scenario (default: quick / env: DEFAULT_SCENARIO)")
     p.add_argument("--quality",
                    default=os.environ.get("DEFAULT_QUALITY","balanced"),
-                   choices=["fast","balanced","best"],
+                   choices=["fast","balanced","best","deep"],
                    help="Modell minĹ‘sĂ©g (default: balanced / env: DEFAULT_QUALITY)")
+    p.add_argument("--list-scenarios", action="store_true",
+                   help="Listaz minden elerheto scenario konfiguraciot")
+    p.add_argument("--scenario-info", metavar="SCENARIO_ID",
+                   choices=scenario_ids,
+                   help="Reszletes scenario konfiguracio es role/model osszegzes")
     p.add_argument("--roles",      metavar="ROLE=MODEL,...",
                    help="Szerepek felĂĽlĂ­rĂˇsa pl: --roles strategist=gpt-best,judge=claude-opus")
     p.add_argument("--parallel",
@@ -5839,10 +5973,29 @@ Peldak:
                    help="OutputContract JSON fajl a vegso dokumentum szerkezetehez")
     args = p.parse_args()
 
+    args.quality = normalize_quality(args.quality)
     SYNTHESIS_MAX_OUTPUT_TOKENS = args.synthesis_max_output_tokens
 
     if args.smoke_test:
         raise SystemExit(run_smoke_test())
+
+    if args.list_scenarios:
+        print("Available scenarios:")
+        for scenario_id in available_scenario_ids(SCENARIOS):
+            resolved = _resolve_scenario_or_abort(scenario_id, args.quality, {})
+            print(
+                f"- {resolved['scenario_id']}: {resolved['description']} | "
+                f"phases={','.join(resolved['phases'])} | "
+                f"participants={','.join(resolved['debate_participant_roles'])} | "
+                f"judge={resolved['judge_role']} | "
+                f"minimum={resolved['minimum_required_debate_participants']}"
+            )
+        return
+
+    if args.scenario_info:
+        resolved = _resolve_scenario_or_abort(args.scenario_info, args.quality, {})
+        print(format_scenario_summary(resolved, full=True))
+        return
 
     # Prompt
     user_prompt = ""
@@ -5863,6 +6016,8 @@ Peldak:
                 role_overrides[k.strip()] = v.strip()
         if role_overrides:
             print(f"đźŽ­ Szerepek felĂĽlĂ­rva: {role_overrides}")
+
+    resolved_scenario = _resolve_scenario_or_abort(args.scenario, args.quality, role_overrides)
 
     if args.health_check_only:
         engines = build_roles(args.scenario, args.quality, role_overrides)
@@ -5891,6 +6046,7 @@ Peldak:
         items = []
 
     RUN_METADATA.clear()
+    RUN_METADATA["resolved_scenario"] = scenario_summary(resolved_scenario)
     task_profile = build_task_profile(user_prompt, items, args.lang, args.scenario)
     RUN_METADATA["task_profile"] = task_profile_to_dict(task_profile)
     print_task_profile(task_profile)

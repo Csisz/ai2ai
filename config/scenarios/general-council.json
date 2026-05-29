@@ -1,0 +1,39 @@
+{
+  "scenario_id": "general-council",
+  "description": "General-purpose council for broad analysis tasks.",
+  "phases": ["evidence", "independent", "issue_matrix", "rebuttal", "revision", "judge"],
+  "roles": ["moderator", "generalist", "engineer", "strategist", "skeptic", "judge"],
+  "default_role_models": {
+    "fast": {
+      "moderator": "claude-sonnet",
+      "generalist": "gpt-fast",
+      "engineer": "claude-sonnet",
+      "strategist": "gpt-fast",
+      "skeptic": "deepseek",
+      "judge": "gpt-fast"
+    },
+    "balanced": {
+      "moderator": "claude-sonnet",
+      "generalist": "gpt",
+      "engineer": "claude-sonnet",
+      "strategist": "gpt",
+      "skeptic": "grok",
+      "judge": "gpt"
+    },
+    "best": {
+      "moderator": "claude-sonnet",
+      "generalist": "gpt-best",
+      "engineer": "claude-opus",
+      "strategist": "gpt-best",
+      "skeptic": "grok-best",
+      "judge": "claude-opus"
+    }
+  },
+  "judge_role": "judge",
+  "moderator_role": "moderator",
+  "debate_participant_roles": ["generalist", "engineer", "strategist", "skeptic"],
+  "minimum_required_debate_participants": 2,
+  "synthesis_mode": "default",
+  "default_contract_id": "general_analysis",
+  "notes": "New general-purpose scenario for non-business-specific analysis."
+}

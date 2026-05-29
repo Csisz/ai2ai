@@ -1,0 +1,42 @@
+{
+  "scenario_id": "expert-council",
+  "description": "5 phases: evidence -> independent -> issue matrix -> rebuttal -> revision -> judge.",
+  "phases": ["evidence", "independent", "issue_matrix", "rebuttal", "revision", "judge"],
+  "roles": ["moderator", "strategist", "engineer", "market_analyst", "skeptic", "cost_reasoner", "judge"],
+  "default_role_models": {
+    "fast": {
+      "moderator": "claude-sonnet",
+      "strategist": "gpt-fast",
+      "engineer": "claude-sonnet",
+      "market_analyst": "gemini-fast",
+      "skeptic": "grok",
+      "cost_reasoner": "deepseek",
+      "judge": "gpt-fast"
+    },
+    "balanced": {
+      "moderator": "claude-sonnet",
+      "strategist": "gpt",
+      "engineer": "claude-sonnet",
+      "market_analyst": "gemini",
+      "skeptic": "grok",
+      "cost_reasoner": "deepseek",
+      "judge": "gpt"
+    },
+    "best": {
+      "moderator": "claude-sonnet",
+      "strategist": "gpt-best",
+      "engineer": "claude-opus",
+      "market_analyst": "gemini",
+      "skeptic": "grok-best",
+      "cost_reasoner": "deepseek-pro",
+      "judge": "gpt-best"
+    }
+  },
+  "judge_role": "judge",
+  "moderator_role": "moderator",
+  "debate_participant_roles": ["strategist", "engineer", "market_analyst", "skeptic", "cost_reasoner"],
+  "minimum_required_debate_participants": 2,
+  "synthesis_mode": "default",
+  "default_contract_id": "default_business_master_plan",
+  "notes": "Preserves the intended expert council flow."
+}

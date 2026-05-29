@@ -1,0 +1,39 @@
+{
+  "scenario_id": "build-plan",
+  "description": "Product + architect + security + QA synthesis for roadmap and sprint planning.",
+  "phases": ["evidence", "independent", "issue_matrix", "rebuttal", "revision", "judge"],
+  "roles": ["moderator", "product_mgr", "architect", "security", "qa_reviewer", "judge"],
+  "default_role_models": {
+    "fast": {
+      "moderator": "claude-sonnet",
+      "product_mgr": "gpt-fast",
+      "architect": "claude-sonnet",
+      "security": "deepseek",
+      "qa_reviewer": "gemini-fast",
+      "judge": "gpt-fast"
+    },
+    "balanced": {
+      "moderator": "claude-sonnet",
+      "product_mgr": "gpt",
+      "architect": "claude-sonnet",
+      "security": "deepseek",
+      "qa_reviewer": "gemini",
+      "judge": "gpt"
+    },
+    "best": {
+      "moderator": "claude-sonnet",
+      "product_mgr": "gpt-best",
+      "architect": "claude-opus",
+      "security": "grok-best",
+      "qa_reviewer": "gemini",
+      "judge": "claude-opus"
+    }
+  },
+  "judge_role": "judge",
+  "moderator_role": "moderator",
+  "debate_participant_roles": ["product_mgr", "architect", "security", "qa_reviewer"],
+  "minimum_required_debate_participants": 2,
+  "synthesis_mode": "default",
+  "default_contract_id": "default_business_master_plan",
+  "notes": "Preserves the original build-plan behavior."
+}

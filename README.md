@@ -1,133 +1,149 @@
-# 🤖 AI Debate Pipeline — Claude vs GPT-4o  (v2)
+# AI Debate Pipeline
 
-Claude és GPT-4o vitáznak egy **mappa** tartalmáról (vagy két fájlról), a te promptod
-által meghatározott cél mentén — majd közösen szintetizálnak egy Word dokumentumot.
+AI Debate Pipeline is a Python CLI tool that lets multiple AI providers debate a task, compare perspectives, and synthesize final artifacts.
 
-## Telepítés
+The current pipeline supports:
+- provider/model health checks and fallback,
+- failed-response exclusion,
+- TaskProfile-based task understanding,
+- OutputContract-based final document structure,
+- multi-step synthesis with validation and repair,
+- markdown synthesis, meeting report, transcript, `debate_log.json`, and optional docx output.
 
-```bash
-pip install anthropic openai python-docx
-npm install -g docx
-```
+## CLI Usage
 
-## API kulcsok
-
-```powershell
-# Windows PowerShell
-$env:ANTHROPIC_API_KEY = "sk-ant-..."
-$env:OPENAI_API_KEY    = "sk-..."
-```
-
----
-
-## Használat
-
-### 1. MAPPA MÓD — ajánlott ✅
+Basic quick run:
 
 ```powershell
-python ai_debate.py --folder D:\Munka\projektek\docs `
-    --prompt "Ez a mappa egy SaaS termék terveit tartalmazza. Célom: értékeljétek az architektúrát és a go-to-market stratégiát, hozzátok fel a gyengeségeket, de legyetek kompromisszumkészek a technikai megvalósítás kérdéseiben."
+python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --no-docx --output-dir .\eredmenyek
 ```
 
-Támogatott fájltípusok a mappában: `.docx`, `.txt`, `.md`, `.pdf`
-
-### 2. PROMPT FÁJLBÓL — hosszabb feladatleíráshoz
+Task profile only:
 
 ```powershell
-# feladat.txt tartalma: részletes feladatleírás
-python ai_debate.py --folder ./sources --prompt-file feladat.txt --rounds 4
+python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --task-profile-only --output-dir .\eredmenyek_profile
 ```
 
-### 3. KÉT EXPLICIT FÁJL
+Run with an OutputContract:
 
 ```powershell
-python ai_debate.py tervezet_A.docx tervezet_B.docx `
-    --prompt "Melyik üzleti terv életképesebb magyar KKV piacon?"
+python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --contract-file .\contracts\business_master_plan.json --no-docx --output-dir .\eredmenyek_business
 ```
 
-### 4. ANGOL KIMENET
+Smoke test:
 
 ```powershell
-python ai_debate.py --folder ./docs --prompt "Evaluate these for enterprise readiness." --lang en
+python -B ai_debate.py --smoke-test
 ```
 
----
+## Common CLI Options
 
-## Kapcsolók
+| Option | Purpose |
+| --- | --- |
+| `--folder PATH` | Load source material from a folder. |
+| `--prompt TEXT` | Provide the task directly. |
+| `--prompt-file PATH` | Load the task prompt from a file. |
+| `--scenario quick` | Select the debate scenario. |
+| `--quality fast` | Select model quality tier. |
+| `--roles role=model` | Override role model mapping. |
+| `--output-dir PATH` | Write generated artifacts to a directory. |
+| `--no-docx` | Skip optional docx generation. |
+| `--task-profile-only` | Generate only TaskProfile artifacts. |
+| `--health-check-only` | Run provider/model health checks only. |
+| `--contract-file PATH` | Load a JSON OutputContract. |
+| `--synthesis-max-output-tokens N` | Set synthesis output token budget. |
+| `--smoke-test` | Run local smoke tests without provider calls. |
 
-| Kapcsoló | Leírás | Alapértelmezett |
-|----------|--------|-----------------|
-| `--folder MAPPA` | Forrásmappa összes dokumentuma | — |
-| `--prompt "..."` | Feladat / kontextus szöveg | (üres) |
-| `--prompt-file f.txt` | Prompt betöltése fájlból | — |
-| `--rounds N` | Vita körök száma | 3 |
-| `--output fajl.docx` | Kimeneti fájl neve | synthesis_output.docx |
-| `--output-dir ./dir` | Kimeneti könyvtár | . (jelenlegi) |
-| `--lang hu\|en` | Válasz nyelve | hu |
-| `--max-chars N` | Max karakter/forrás (token védelem) | 8000 |
+## Output Files
 
----
+Typical full runs write:
 
-## A folyamat
+| File | Purpose |
+| --- | --- |
+| `synthesis_output.md` | Final human-readable synthesis. |
+| `synthesis_output_meeting_report.md` | Meeting-style process and decision report. |
+| `debate_log.json` | Machine-readable run log and metadata. |
+| `debate_transcript.txt` | Readable debate transcript. |
+| `synthesis_output.docx` | Optional docx output when enabled. |
 
+`--task-profile-only` also writes `task_profile.json`.
+
+## Current Architecture
+
+`ai_debate.py` is intentionally thin. It is the public CLI entry point and delegates to `ai2ai.cli.main()`.
+
+Implementation lives under `ai2ai/`:
+
+```text
+ai2ai/
+  cli.py
+  config.py
+  model_catalog.py
+  core/
+  providers/
+  ingestion/
+  profiling/
+  contracts/
+  debate/
+  synthesis/
+  renderers/
+  utils/
 ```
-[--folder ./docs]  +  [--prompt "célom: ..."]
-        │
-        ▼
-  Összes .docx/.txt/.md/.pdf beolvasása
-        │
-        ▼
-  ┌─────────────────────────────────────────┐
-  │  KÖR 1..N                               │
-  │  Claude elemez & érvel                  │
-  │      ↕  (láncolt üzenet história)       │
-  │  GPT-4o reagál & ellenérvel             │
-  └─────────────────────────────────────────┘
-        │
-        ▼
-  Claude szintetizálja a vita eredményét
-        │
-        ▼
-  synthesis_output.docx  ✅
-  debate_log.json        ✅
-  debate_transcript.txt  ✅
+
+Development should add new logic to the relevant package area:
+- scenario and role orchestration: `ai2ai/core/`
+- provider adapters: `ai2ai/providers/`
+- source loading and summaries: `ai2ai/ingestion/`
+- TaskProfile: `ai2ai/profiling/`
+- OutputContract: `ai2ai/contracts/`
+- debate phases: `ai2ai/debate/`
+- final synthesis and validation: `ai2ai/synthesis/`
+- artifact writing: `ai2ai/renderers/`
+- shared helpers: `ai2ai/utils/`
+
+Do not put new large logic into `ai_debate.py`.
+
+## Completed Sprint State
+
+Verified through Sprint 3.5:
+- Sprint 0: provider health checks, fallback, failed-response exclusion, smoke path.
+- Sprint 1: multi-step synthesis, validation, repair, structured metadata handling.
+- Sprint 2: TaskProfile.
+- Sprint 3: OutputContract and contract-aware synthesis.
+- Sprint 3.5: safe modularization into the `ai2ai/` package.
+- Sprint 3.6: documentation sync after modularization.
+
+## Regression Commands
+
+Run after behavior changes:
+
+```powershell
+python -B ai_debate.py --smoke-test
 ```
 
----
-
-## Kimenet
-
-| Fájl | Tartalom |
-|------|----------|
-| `synthesis_output.docx` | Cél + Forrásanyagok + Fejezetek + Ajánlások + Összefoglalás + Vita kivonat |
-| `debate_transcript.txt` | Claude↔GPT teljes párbeszéd olvashatóan |
-| `debate_log.json` | Gépi formátum (prompt + vita) |
-
----
-
-## Prompt írási tippek
-
-A `--prompt` a vita irányát és mélységét szabja meg. Érdemes beleírni:
-
-- **Mit tartalmaz a mappa**: "Ez a mappa a DocuAgent termék 3 tervezési dokumentumát tartalmazza..."
-- **Mi a cél**: "Szeretném, ha értékelnétek az architektúrát KKV szempontból..."
-- **Mire fókuszáljanak**: "Különös figyelmet fordítsatok a GDPR megfelelőségre és az árazási modellre."
-- **Milyen kompromisszumot várunk**: "A technikai megoldásokban legyetek rugalmasak, az üzleti modellben szigorúak."
-
-### Példa prompt (feladat.txt):
-
+```powershell
+python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --no-docx --output-dir .\eredmenyek_regression_default --synthesis-max-output-tokens 8000
 ```
-Ez a mappa az Agentify DocuAgent termékének tervdokumait tartalmazza:
-- egy technikai architektúra leírást
-- egy go-to-market stratégiai dokumentumot
-- egy konkurenciaelemzést
 
-CÉLOM:
-Értékeljétek mindhárom dokumentumot együtt. Vitassátok meg:
-1. Mennyire koherens a technikai és az üzleti stratégia?
-2. Hol vannak hiányosságok vagy ellentmondások?
-3. Mi az, amiben mindketten egyetértetek mint erősség?
-
-Magyar KKV piac (főleg könyvelők, ügyvédek) a célcsoport. Legyetek
-kritikusak, de kompromisszumkészek. A végső dokumentum legyen actionable.
+```powershell
+python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --contract-file .\contracts\business_master_plan.json --no-docx --output-dir .\eredmenyek_regression_business --synthesis-max-output-tokens 8000
 ```
+
+```powershell
+python -B ai_debate.py --folder .\source --prompt-file .\feladat.txt --scenario quick --quality fast --contract-file .\contracts\technical_audit.json --no-docx --output-dir .\eredmenyek_regression_technical --synthesis-max-output-tokens 8000
+```
+
+For documentation-only changes, the smoke test is usually sufficient.
+
+## Future Sprint Prompts
+
+Future sprint prompts live in:
+
+```text
+docs/SPRINT_PROMPTS.md
+```
+
+They currently cover:
+- Sprint 4: config-based scenarios and roles,
+- Sprint 5: source ingestion, repo map, secret scrubber, nested ZIP,
+- Sprint 6: optional backend API preparation.

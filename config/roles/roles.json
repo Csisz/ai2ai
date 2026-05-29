@@ -1,0 +1,154 @@
+{
+  "roles": [
+    {
+      "role_id": "moderator",
+      "title": "Moderator",
+      "role_type": "infrastructure",
+      "description": "Builds the evidence pack and coordinates shared context.",
+      "default_model_key": "claude-sonnet",
+      "fallback_model_keys": ["claude-sonnet", "claude-opus", "gpt", "gemini"],
+      "prompt_focus": "Neutral source compression, issue framing, and debate structure.",
+      "responsibilities": ["summarize evidence", "frame issues", "keep source grounding"]
+    },
+    {
+      "role_id": "judge",
+      "title": "Final Judge",
+      "role_type": "infrastructure",
+      "description": "Produces the final synthesis and contract-aware deliverables.",
+      "default_model_key": "gpt",
+      "fallback_model_keys": ["gpt-best", "gpt", "claude-opus", "claude-sonnet", "gemini", "deepseek-pro", "grok-best"],
+      "prompt_focus": "Decision quality, synthesis consistency, and final artifact completeness.",
+      "responsibilities": ["synthesize debate", "resolve tradeoffs", "validate final artifact"]
+    },
+    {
+      "role_id": "debater1",
+      "title": "Debater 1",
+      "role_type": "debate_participant",
+      "description": "Primary quick-mode participant.",
+      "default_model_key": "gpt-fast",
+      "fallback_model_keys": ["claude-sonnet", "gemini", "deepseek", "grok"],
+      "prompt_focus": "Strategic and practical evaluation.",
+      "responsibilities": ["independent opinion", "risk analysis", "recommendations"]
+    },
+    {
+      "role_id": "debater2",
+      "title": "Debater 2",
+      "role_type": "debate_participant",
+      "description": "Second quick-mode participant with provider diversity.",
+      "default_model_key": "gemini-fast",
+      "fallback_model_keys": ["claude-sonnet", "gpt", "deepseek", "grok"],
+      "prompt_focus": "Alternative perspective and challenge.",
+      "responsibilities": ["independent opinion", "challenge assumptions", "recommendations"]
+    },
+    {
+      "role_id": "strategist",
+      "title": "Strategist",
+      "role_type": "debate_participant",
+      "description": "Business and strategy participant.",
+      "default_model_key": "gpt",
+      "fallback_model_keys": ["claude-sonnet", "gemini", "deepseek", "grok"],
+      "prompt_focus": "Business model, positioning, go-to-market, and tradeoffs.",
+      "responsibilities": ["market reasoning", "business risks", "strategic recommendations"]
+    },
+    {
+      "role_id": "engineer",
+      "title": "Senior Engineer",
+      "role_type": "debate_participant",
+      "description": "Technical feasibility participant.",
+      "default_model_key": "claude-sonnet",
+      "fallback_model_keys": ["gpt", "gemini", "deepseek", "grok"],
+      "prompt_focus": "Architecture, implementation feasibility, and technical debt.",
+      "responsibilities": ["architecture review", "implementation risks", "technical recommendations"]
+    },
+    {
+      "role_id": "market_analyst",
+      "title": "Market Analyst",
+      "role_type": "debate_participant",
+      "description": "Market and customer perspective.",
+      "default_model_key": "gemini",
+      "fallback_model_keys": ["claude-sonnet", "gpt", "deepseek", "grok"],
+      "prompt_focus": "Audience, competition, pricing, and adoption.",
+      "responsibilities": ["market analysis", "customer fit", "competitive risks"]
+    },
+    {
+      "role_id": "skeptic",
+      "title": "Skeptic",
+      "role_type": "debate_participant",
+      "description": "Critical reviewer focused on weak assumptions.",
+      "default_model_key": "grok",
+      "fallback_model_keys": ["gpt", "claude-sonnet", "gemini", "deepseek"],
+      "prompt_focus": "Failure modes, overclaims, compliance, and hidden risks.",
+      "responsibilities": ["red-team assumptions", "identify risks", "pressure-test recommendations"]
+    },
+    {
+      "role_id": "skeptic2",
+      "title": "Second Skeptic",
+      "role_type": "debate_participant",
+      "description": "Additional critical reviewer for red-team scenarios.",
+      "default_model_key": "deepseek",
+      "fallback_model_keys": ["gpt", "claude-sonnet", "gemini", "grok"],
+      "prompt_focus": "Cost, feasibility, operational and legal risk.",
+      "responsibilities": ["second-order risks", "implementation concerns", "risk ranking"]
+    },
+    {
+      "role_id": "cost_reasoner",
+      "title": "Cost Reasoner",
+      "role_type": "debate_participant",
+      "description": "Cost, complexity, and sequencing reviewer.",
+      "default_model_key": "deepseek",
+      "fallback_model_keys": ["gpt", "claude-sonnet", "gemini", "grok"],
+      "prompt_focus": "Budget, effort, sequencing, and hidden cost.",
+      "responsibilities": ["cost analysis", "scope control", "delivery tradeoffs"]
+    },
+    {
+      "role_id": "product_mgr",
+      "title": "Product Manager",
+      "role_type": "debate_participant",
+      "description": "Product scope and roadmap owner.",
+      "default_model_key": "gpt",
+      "fallback_model_keys": ["claude-sonnet", "gemini", "deepseek", "grok"],
+      "prompt_focus": "User value, roadmap, prioritization, and release shape.",
+      "responsibilities": ["scope definition", "roadmap decisions", "user value"]
+    },
+    {
+      "role_id": "architect",
+      "title": "Architect",
+      "role_type": "debate_participant",
+      "description": "Architecture and systems design reviewer.",
+      "default_model_key": "claude-sonnet",
+      "fallback_model_keys": ["gpt", "gemini", "deepseek", "grok"],
+      "prompt_focus": "System boundaries, integration, scalability, and maintainability.",
+      "responsibilities": ["architecture decisions", "integration risks", "technical roadmap"]
+    },
+    {
+      "role_id": "security",
+      "title": "Security Reviewer",
+      "role_type": "debate_participant",
+      "description": "Security and governance reviewer.",
+      "default_model_key": "deepseek",
+      "fallback_model_keys": ["gpt", "claude-sonnet", "gemini", "grok"],
+      "prompt_focus": "Security, privacy, governance, and abuse cases.",
+      "responsibilities": ["security review", "governance risks", "control recommendations"]
+    },
+    {
+      "role_id": "qa_reviewer",
+      "title": "QA Reviewer",
+      "role_type": "debate_participant",
+      "description": "Testability and quality reviewer.",
+      "default_model_key": "gemini",
+      "fallback_model_keys": ["claude-sonnet", "gpt", "deepseek", "grok"],
+      "prompt_focus": "Testing, acceptance criteria, reliability, and release risks.",
+      "responsibilities": ["test plan", "acceptance criteria", "quality risks"]
+    },
+    {
+      "role_id": "generalist",
+      "title": "Generalist",
+      "role_type": "debate_participant",
+      "description": "Broad analytical participant for general-purpose tasks.",
+      "default_model_key": "gpt",
+      "fallback_model_keys": ["claude-sonnet", "gemini", "deepseek", "grok"],
+      "prompt_focus": "General analysis, synthesis, and actionable recommendations.",
+      "responsibilities": ["analysis", "summary", "recommendations"]
+    }
+  ]
+}

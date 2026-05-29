@@ -1,0 +1,33 @@
+{
+  "scenario_id": "quick",
+  "description": "3 models, one independent round plus synthesis.",
+  "phases": ["evidence", "independent", "judge"],
+  "roles": ["moderator", "debater1", "debater2", "judge"],
+  "default_role_models": {
+    "fast": {
+      "moderator": "claude-sonnet",
+      "debater1": "gpt-fast",
+      "debater2": "gemini-fast",
+      "judge": "gpt-fast"
+    },
+    "balanced": {
+      "moderator": "claude-sonnet",
+      "debater1": "gpt",
+      "debater2": "gemini",
+      "judge": "gpt"
+    },
+    "best": {
+      "moderator": "claude-sonnet",
+      "debater1": "gpt-best",
+      "debater2": "gemini",
+      "judge": "claude-opus"
+    }
+  },
+  "judge_role": "judge",
+  "moderator_role": "moderator",
+  "debate_participant_roles": ["debater1", "debater2"],
+  "minimum_required_debate_participants": 2,
+  "synthesis_mode": "default",
+  "default_contract_id": "default_business_master_plan",
+  "notes": "Preserves the original quick scenario behavior."
+}
