@@ -42,6 +42,12 @@ Regression test:
 python -B ai_debate.py --regression-test
 ```
 
+Optional API server:
+
+```powershell
+python -B ai_debate.py --api --host 127.0.0.1 --port 8000
+```
+
 ## Common CLI Options
 
 | Option | Purpose |
@@ -60,6 +66,9 @@ python -B ai_debate.py --regression-test
 | `--synthesis-max-output-tokens N` | Set synthesis output token budget. |
 | `--smoke-test` | Run local smoke tests without provider calls. |
 | `--regression-test` | Run the full regression quality gate. |
+| `--api` / `--serve` | Start the optional local API server when FastAPI and Uvicorn are installed. |
+| `--host 127.0.0.1` | API bind host for `--api`. |
+| `--port 8000` | API bind port for `--api`. |
 
 ## Output Files
 
@@ -109,6 +118,54 @@ Development should add new logic to the relevant package area:
 - shared helpers: `ai2ai/utils/`
 
 Do not put new large logic into `ai_debate.py`.
+
+## Optional API
+
+The CLI remains the primary and stable interface. Sprint 6 adds an optional FastAPI layer for local integration experiments and future UI/API work. If FastAPI or Uvicorn is not installed, normal CLI commands still work; API startup prints:
+
+```text
+FastAPI is not installed. Install API dependencies first.
+```
+
+Install API dependencies only when you want to run the server:
+
+```powershell
+pip install fastapi uvicorn
+```
+
+Start the API:
+
+```powershell
+python -B ai_debate.py --api --host 127.0.0.1 --port 8000
+```
+
+Useful local calls:
+
+```powershell
+Invoke-RestMethod -Method Get -Uri http://127.0.0.1:8000/health
+```
+
+```powershell
+$body = @{
+  folder = ".\source"
+  prompt_file = ".\feladat.txt"
+  scenario = "quick"
+  quality = "fast"
+  contract_file = ".\contracts\technical_audit.json"
+  no_docx = $true
+  synthesis_max_output_tokens = 8000
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/sessions -ContentType "application/json" -Body $body
+```
+
+```powershell
+Invoke-RestMethod -Method Get -Uri http://127.0.0.1:8000/sessions/<session_id>
+Invoke-RestMethod -Method Get -Uri http://127.0.0.1:8000/sessions/<session_id>/artifacts
+Invoke-RestMethod -Method Get -Uri http://127.0.0.1:8000/sessions/<session_id>/log
+```
+
+API sessions are stored locally under `.ai2ai_sessions/`, which is ignored by git. Sprint 6 runs sessions synchronously through the existing CLI orchestration; background workers, auth, streaming, and production deployment are intentionally out of scope.
 
 ## Completed Sprint State
 

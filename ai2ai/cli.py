@@ -5455,6 +5455,41 @@ def run_smoke_test() -> int:
         shutil.rmtree(missing_tmp, ignore_errors=True)
         shutil.rmtree(invalid_tmp, ignore_errors=True)
 
+    api_tmp = tempfile.mkdtemp(prefix="api_smoke_")
+    try:
+        from ai2ai.api import FASTAPI_MISSING_MESSAGE
+        from ai2ai.api.session_store import SessionStore
+        from ai2ai.core.orchestrator import DebateRunRequest
+
+        store = SessionStore(Path(api_tmp))
+        session = store.create({
+            "prompt_text": "Smoke API request",
+            "folder": ".",
+            "scenario": "quick",
+            "quality": "fast",
+        })
+        store.update(session["session_id"], status="completed", artifacts={"debate_log.json": "demo"})
+        loaded_session = store.get(session["session_id"])
+        checks.append(("API session store can create/read session metadata", loaded_session is not None and loaded_session.get("status") == "completed"))
+
+        api_request = DebateRunRequest(prompt_text="hello", folder=".", scenario="quick", quality="fast", no_docx=True)
+        checks.append(("API orchestrator request model is importable", api_request.scenario == "quick" and api_request.no_docx is True))
+
+        try:
+            from ai2ai.api.app import create_app
+            app = create_app(session_root=str(Path(api_tmp) / "fastapi"))
+            checks.append(("optional API app factory works when dependencies installed", hasattr(app, "routes")))
+            try:
+                from fastapi.testclient import TestClient
+                response = TestClient(app).get("/health")
+                checks.append(("/health route works with FastAPI TestClient", response.status_code == 200 and response.json().get("cli_available") is True))
+            except Exception:
+                checks.append(("FastAPI TestClient unavailable does not block CLI smoke", True))
+        except RuntimeError as exc:
+            checks.append(("optional API reports missing FastAPI clearly", str(exc) == FASTAPI_MISSING_MESSAGE))
+    finally:
+        shutil.rmtree(api_tmp, ignore_errors=True)
+
     business_profile = build_task_profile(
         "KĂ©szĂ­ts ĂĽzleti tervet, GTM stratĂ©giĂˇt Ă©s megvalĂłsĂ­tĂˇsi tervet egy AI termĂ©khez.",
         [], "hu", "quick",
@@ -6225,6 +6260,12 @@ Peldak:
                    help="Csak API kulcs jelenletet ellenoriz; nem hiv provider health checket")
     p.add_argument("--health-check-only", action="store_true",
                    help="Provider/model health check utan kilep, vita nelkul")
+    p.add_argument("--api", "--serve", dest="api", action="store_true",
+                   help="Start the optional local API server")
+    p.add_argument("--host", default="127.0.0.1",
+                   help="API host when --api is used (default: 127.0.0.1)")
+    p.add_argument("--port", type=int, default=8000,
+                   help="API port when --api is used (default: 8000)")
     p.add_argument("--synthesis-max-output-tokens", type=int,
                    default=SYNTHESIS_MAX_OUTPUT_TOKENS,
                    help="Final Judge max output token (env: SYNTHESIS_MAX_OUTPUT_TOKENS)")
@@ -6246,6 +6287,14 @@ Peldak:
     if args.regression_test:
         from ai2ai.quality.regression import main as run_regression_test
         raise SystemExit(run_regression_test())
+    if args.api:
+        try:
+            from ai2ai.api.app import run_api_server
+            run_api_server(host=args.host, port=args.port)
+        except RuntimeError as exc:
+            print(str(exc))
+            raise SystemExit(2)
+        return
 
     if args.list_scenarios:
         print("Available scenarios:")
