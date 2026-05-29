@@ -48,3 +48,5 @@ Thumbs.db
 *.docx
 *.pdf
 '@ | Set-Content .gitignore -Encoding UTF8
+# Local VS Code workspaces
+*.code-workspace

@@ -599,6 +599,8 @@ def save_task_profile_only(profile: TaskProfile | dict, out_dir: str, user_promp
     }
     if RUN_METADATA.get("resolved_scenario"):
         payload["metadata"]["resolved_scenario"] = RUN_METADATA["resolved_scenario"]
+    if RUN_METADATA.get("ingestion"):
+        payload["metadata"]["ingestion"] = RUN_METADATA["ingestion"]
     Path(os.path.join(out_dir, "debate_log.json")).write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -1115,6 +1117,13 @@ def load_sources(sources, max_chars):
     imgs=sum(1 for i in items if i.is_img())
     print(f"\n   đź“Š {len(items)-imgs} szĂ¶veges + {imgs} kĂ©p")
     return items
+
+
+from ai2ai.ingestion.loader import (  # noqa: E402
+    DocItem as DocItem,
+    get_last_ingestion_metadata,
+    load_sources as load_sources,
+)
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1639,6 +1648,14 @@ def phase_evidence(items: list, user_prompt: str, moderator: AIEngine,
         f"[{i.name}]\n{i.text}" for i in txt_items
     )
     source_list = "\n".join(f"- {i.name}" for i in items)
+    try:
+        from ai2ai.debate.evidence import build_evidence_ingestion_context
+
+        ingestion_context = build_evidence_ingestion_context(
+            items, RUN_METADATA.get("ingestion", {})
+        )
+    except Exception:
+        ingestion_context = "INGESTION_CONTEXT: not available"
 
     system = """Te egy precĂ­z dokumentum-Ă¶sszefoglalĂł AI vagy.
 Feladatod: egy strukturĂˇlt Evidence Package elkĂ©szĂ­tĂ©se
@@ -1652,6 +1669,8 @@ FELHASZNĂLĂ“I CĂ‰L:
 
 FORRĂSDOKUMENTUMOK:
 {source_list}
+
+{ingestion_context}
 
 TARTALOM:
 {_trunc(raw_text, 15000)}
@@ -3062,23 +3081,7 @@ INCOMPLETE OUTPUT:
         return any(last_word.lower().endswith(sfx) for sfx in common_incomplete_suffixes)
 
     def _abrupt_heading_transitions(self, lines: list[str]) -> list[str]:
-        warnings = []
-        prev = ""
-        for line in lines:
-            cur = line.strip()
-            if cur.startswith("#") and prev:
-                prev_clean = prev.strip()
-                if (
-                    len(prev_clean) > 24
-                    and not prev_clean.startswith(("- ", "* ", "|", "**"))
-                    and not re.match(r"^\d+[\.)]\s+", prev_clean)
-                    and not _strip_trailing_markdown_emphasis(prev_clean).endswith((".", "!", "?", ":", ";", ")", "]", "â€ť", "\""))
-                    and not prev_clean.endswith((".", "!", "?", ":", ";", ")", "]", "â€ť", "\""))
-                ):
-                    warnings.append("abrupt_transition_before_heading")
-            if cur:
-                prev = cur
-        return warnings
+        return _abrupt_heading_transitions(lines)
 
     def _task_block_warnings(self, markdown: str) -> list[str]:
         warnings = []
@@ -3619,6 +3622,42 @@ INCOMPLETE OUTPUT:
         pattern = re.compile(rf"^#+\s+{re.escape(heading_text)}\s*$", re.IGNORECASE | re.MULTILINE)
         return bool(pattern.search(markdown or ""))
 
+    def _extract_contract_deliverable_content(self, markdown: str, deliverable: dict) -> str:
+        title = deliverable.get("title", "")
+        content = self._extract_markdown_section(markdown, title)
+        if deliverable.get("sections"):
+            return content
+        lines = (markdown or "").splitlines()
+        start = None
+        in_fence = False
+        for i, line in enumerate(lines):
+            if line.strip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            if not in_fence and line.lstrip("#").strip().lower() == title.lower():
+                start = i + 1
+                break
+        if start is None:
+            return content
+        other_titles = {
+            d.get("title", "").lower()
+            for d in self.output_contract.get("deliverables", [])
+            if d.get("title") and d.get("title") != title
+        }
+        end = len(lines)
+        in_fence = False
+        for j in range(start, len(lines)):
+            if lines[j].strip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            if not in_fence and lines[j].startswith("#"):
+                heading = lines[j].lstrip("#").strip().lower()
+                if heading in other_titles:
+                    end = j
+                    break
+        expanded = "\n".join(lines[start:end]).strip()
+        return expanded or content
+
     def _is_placeholder_text(self, text: str) -> bool:
         cleaned = " ".join((text or "").strip().lower().split())
         if not cleaned:
@@ -3743,7 +3782,7 @@ INCOMPLETE OUTPUT:
         for deliverable in self.output_contract.get("deliverables", []):
             title = deliverable.get("title", "")
             did = deliverable.get("id", title)
-            content = self._extract_markdown_section(markdown, title)
+            content = self._extract_contract_deliverable_content(markdown, deliverable)
             deliverable_status = self._contract_section_status(
                 content,
                 self._has_markdown_heading(markdown, title),
@@ -4418,6 +4457,84 @@ def _strip_trailing_markdown_emphasis(text: str) -> str:
         cleaned = cleaned[:-1].rstrip()
     return cleaned
 
+def _markdown_heading_level(line: str) -> int:
+    match = re.match(r"^(#{1,6})\s+\S", (line or "").strip())
+    return len(match.group(1)) if match else 0
+
+def _has_balanced_inline_code_spans(line: str) -> bool:
+    text = re.sub(r"```.*?```", "", line or "")
+    return len(re.findall(r"(?<!`)`(?!`)", text)) % 2 == 0
+
+def _line_ends_with_closed_inline_code_span(line: str) -> bool:
+    stripped = (line or "").strip()
+    return stripped.endswith("`") and _has_balanced_inline_code_spans(stripped)
+
+def _ends_like_complete_sentence(line: str) -> bool:
+    candidates = [
+        (line or "").strip(),
+        _strip_trailing_markdown_emphasis(line or "").strip(),
+    ]
+    for text in candidates:
+        if not text:
+            continue
+        if text.endswith((".", "!", "?")):
+            return True
+        closed = text.rstrip(")]}\"'")
+        if closed != text and closed.endswith((".", "!", "?")):
+            return True
+    return False
+
+def _looks_dangling_before_heading(line: str) -> bool:
+    stripped = _strip_trailing_markdown_emphasis(line or "").strip()
+    if not stripped:
+        return True
+    if stripped.endswith((",", ":", ";", "/", "\\")):
+        return True
+    tail = stripped.lower().rstrip(".,!?)]}\"'`")
+    return tail.endswith((
+        " and", " or", " but", " because", " while", " with", " without",
+        " for", " to", " from", " of", " the", " a", " an",
+    ))
+
+def _is_completed_list_item_before_heading(line: str) -> bool:
+    stripped = (line or "").strip()
+    match = re.match(r"^(?:[-*+]\s+|\d+[\.)]\s+)(.+)$", stripped)
+    if not match:
+        return False
+    item = match.group(1).strip()
+    if _looks_dangling_before_heading(item):
+        return False
+    if _ends_like_complete_sentence(item) or _line_ends_with_closed_inline_code_span(item):
+        return True
+    if len(item.split()) < 3:
+        return False
+    return (
+        not _looks_mid_word_ending(item)
+    )
+
+def _line_allows_heading_transition(previous_line: str, heading_line: str) -> bool:
+    prev = (previous_line or "").strip()
+    cur = (heading_line or "").strip()
+    if not prev or not cur.startswith("#"):
+        return True
+    prev_level = _markdown_heading_level(prev)
+    cur_level = _markdown_heading_level(cur)
+    if prev_level:
+        return bool(cur_level and cur_level > prev_level)
+    if prev.startswith(("|", ">")):
+        return True
+    if _is_completed_list_item_before_heading(prev):
+        return True
+    if prev.endswith(":") and cur_level >= 3:
+        return True
+    if re.match(r"^\d+[\.)]\s+", prev) or prev.startswith(("- ", "* ", "+ ")):
+        return False
+    if _line_ends_with_closed_inline_code_span(prev):
+        return True
+    if _looks_dangling_before_heading(prev):
+        return False
+    return _ends_like_complete_sentence(prev)
+
 def _abrupt_heading_transitions(lines: list[str]) -> list[str]:
     warnings = []
     prev = ""
@@ -4425,13 +4542,7 @@ def _abrupt_heading_transitions(lines: list[str]) -> list[str]:
         cur = line.strip()
         if cur.startswith("#") and prev:
             prev_clean = prev.strip()
-            if (
-                len(prev_clean) > 24
-                and not prev_clean.startswith(("- ", "* ", "|", "**"))
-                and not re.match(r"^\d+[\.)]\s+", prev_clean)
-                and not _strip_trailing_markdown_emphasis(prev_clean).endswith((".", "!", "?", ":", ";", ")", "]", "â€ť", "\""))
-                and not prev_clean.endswith((".", "!", "?", ":", ";", ")", "]", "â€ť", "\""))
-            ):
+            if len(prev_clean) > 24 and not _line_allows_heading_transition(prev_clean, cur):
                 warnings.append("abrupt_transition_before_heading")
         if cur:
             prev = cur
@@ -4807,6 +4918,29 @@ def save_meeting_report(session_log: list, revisions: dict, synthesis: dict,
             f"- **output_format:** {contract.get('output_format', 'unknown')}",
             f"- **deliverables:** {', '.join(deliverable_titles)}",
             f"- **required_metadata:** {', '.join(contract.get('required_metadata') or [])}",
+            "",
+            "---",
+            "",
+        ]
+
+    ingestion = RUN_METADATA.get("ingestion", {})
+    if ingestion:
+        redactions = ingestion.get("redaction_summary", {}).get("total_redactions", 0)
+        important_files = [
+            item.get("path", "")
+            for item in ingestion.get("important_files", [])[:8]
+            if isinstance(item, dict)
+        ]
+        lines += [
+            "## Source / Ingestion Summary",
+            "",
+            f"- **source_count:** {ingestion.get('source_count', 0)}",
+            f"- **detected_stack/languages:** {', '.join(ingestion.get('detected_frameworks') or []) or 'none'} / {', '.join(ingestion.get('detected_languages') or []) or 'none'}",
+            f"- **important_files:** {', '.join(important_files) or 'none'}",
+            f"- **skipped/truncated:** {ingestion.get('skipped_file_count', 0)} skipped / {len(ingestion.get('truncated_files') or [])} truncated",
+            f"- **redaction_count:** {redactions}",
+            f"- **nested_archive_count:** {len(ingestion.get('nested_archives_processed') or [])}",
+            f"- **Repo Map:** {ingestion.get('repo_map', {}).get('root_summary', 'not available')}",
             "",
             "---",
             "",
@@ -5230,6 +5364,57 @@ def run_smoke_test() -> int:
     checks.append(("--scenario-info quick works", "Scenario: quick" in format_scenario_summary(quick_resolved, full=True)))
     override_resolved = _resolve_scenario_or_abort("quick", "fast", {"judge": "claude-sonnet"})
     checks.append(("--roles override still works", override_resolved["active_role_models"]["judge"] == "claude-sonnet"))
+    ingestion_tmp = tempfile.mkdtemp(prefix="ingestion_smoke_")
+    try:
+        ingest_root = Path(ingestion_tmp)
+        (ingest_root / "src").mkdir()
+        (ingest_root / "tests").mkdir()
+        (ingest_root / "README.md").write_text("# Demo\n\nRepository overview.", encoding="utf-8")
+        (ingest_root / "package.json").write_text(
+            json.dumps({"dependencies": {"react": "^18.0.0", "vite": "^5.0.0"}}),
+            encoding="utf-8",
+        )
+        (ingest_root / "src" / "main.py").write_text("print('hello')\n", encoding="utf-8")
+        (ingest_root / "tests" / "test_main.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+        (ingest_root / ".env").write_text("OPENAI_API_KEY=sk-testsecret123456789012345\nPASSWORD=hunter2\n", encoding="utf-8")
+        (ingest_root / "binary.bin").write_bytes(b"\x00\x01\x02\x03")
+
+        deep_zip = ingest_root / "deep.zip"
+        with zipfile.ZipFile(deep_zip, "w") as z:
+            z.writestr("too_deep.txt", "hidden")
+        inner_zip = ingest_root / "inner.zip"
+        with zipfile.ZipFile(inner_zip, "w") as z:
+            z.writestr("inner_readme.md", "# Inner")
+            z.write(deep_zip, "deep.zip")
+        outer_zip = ingest_root / "outer.zip"
+        with zipfile.ZipFile(outer_zip, "w") as z:
+            z.write(inner_zip, "inner.zip")
+        deep_zip.unlink()
+        inner_zip.unlink()
+
+        smoke_items = load_sources(
+            [str(ingest_root)],
+            4000,
+            max_source_files=50,
+            max_source_chars=20000,
+            max_nested_archive_depth=1,
+        )
+        ingestion_meta = get_last_ingestion_metadata()
+        joined_text = "\n".join(i.text for i in smoke_items if not i.is_img())
+        repo_map = ingestion_meta.get("repo_map", {})
+        important_paths = [i.get("path", "") for i in ingestion_meta.get("important_files", [])]
+        evidence_context = __import__(
+            "ai2ai.debate.evidence", fromlist=["build_evidence_ingestion_context"]
+        ).build_evidence_ingestion_context(smoke_items, ingestion_meta)
+        checks.append(("secret scrubbing masks .env-like content", "sk-testsecret" not in joined_text and "PASSWORD=[REDACTED]" in joined_text))
+        checks.append(("nested ZIP depth limit works", any(s.get("reason") == "nested_archive_depth_limit" for s in ingestion_meta.get("skipped_files", []))))
+        checks.append(("repo map detects package.json / README / src files", "package.json" in repo_map.get("package_config_files", []) and "README.md" in repo_map.get("docs_readme_files", []) and any(p.startswith("src/") for p in important_paths)))
+        checks.append(("binary files are skipped", any(s.get("path") == "binary.bin" and s.get("reason") == "binary_file" for s in ingestion_meta.get("skipped_files", []))))
+        checks.append(("important files are prioritized", important_paths[:3] and any(p in important_paths[:5] for p in ("README.md", "package.json"))))
+        checks.append(("ingestion metadata is present", ingestion_meta.get("text_file_count", 0) >= 5 and "repo_map" in ingestion_meta))
+        checks.append(("Evidence Pack includes repo map summary", "REPO_MAP_SUMMARY" in evidence_context and "IMPORTANT_FILES" in evidence_context))
+    finally:
+        shutil.rmtree(ingestion_tmp, ignore_errors=True)
     missing_tmp = tempfile.mkdtemp(prefix="scenario_missing_smoke_")
     invalid_tmp = tempfile.mkdtemp(prefix="scenario_invalid_smoke_")
     try:
@@ -5615,7 +5800,26 @@ This legacy heading must not leak into the assembled contract output.""",
         "ai_handoff": {
             "id": "ai_handoff", "title": "AI handoff context", "source": "ai_context",
             "required": False, "sections": [],
-            "markdown": "## AI handoff context\n\n- The next agent should preserve the contract-first synthesis path and avoid default-section leakage.\n- It should verify final validation status, repaired sections, and contract deliverables in debate_log.json.",
+            "markdown": """## AI handoff context
+
+The next agent should preserve the contract-first synthesis path and avoid default-section leakage.
+
+## Current state of the codebase
+### What already works
+- The contract-aware synthesis path builds required deliverables and keeps default sections out of contract output.
+- Debate log metadata records final validation status, repaired sections, and contract deliverable details.
+
+### What remains risky
+- Validation should keep distinguishing real truncation from ordinary nested markdown headings.
+- Provider failures must remain visible in the synthesis process instead of being hidden by generated filler.
+
+## Recommended final direction
+- Preserve the current CLI behavior while adding focused regression tests around contract validation.
+- Treat downstream AI handoff content as a whole document when the deliverable has no declared subsections.
+
+## Definition of done for this handoff
+- The technical audit contract validates without duplicate deliverable headings.
+- Internal handoff headings remain available for downstream agents without being treated as truncation.""",
         },
     }
     contract_md = contract_engine._build_contract_markdown_from_results(
@@ -5625,7 +5829,7 @@ This legacy heading must not leak into the assembled contract output.""",
     contract_validation = contract_engine._validate_contract_markdown(contract_md)
     checks.append(("technical contract markdown validates ok", contract_validation["status"] == "ok"))
     checks.append(("duplicate deliverable heading is stripped", contract_md.count("## Audit verdict") == 1))
-    checks.append(("no-section deliverable with nested headings validates correctly", "final_verdict" not in contract_validation.get("weak_sections", [])))
+    checks.append(("no-section deliverable with nested headings validates correctly", "ai_handoff" not in contract_validation.get("weak_sections", [])))
     checks.append(("no duplicated AI handoff sections", contract_md.count("## AI handoff context") == 1))
     checks.append(("no legacy default headings appended to contract output", "## VĂ©gsĹ‘ ĂĽzleti terv" not in contract_md and "## VĂ©gsĹ‘ megvalĂłsĂ­tĂˇsi terv" not in contract_md))
 
@@ -5644,6 +5848,22 @@ Keep this fenced prompt intact.
     checks.append(("balanced fenced code block does not trigger truncation warning", "possible_mid_word_ending" not in fence_warnings and not any("task_1_" in w for w in fence_warnings)))
     bold_heading_transition = "5. **only then expand into enterprise features or stronger automation claims.**\n\n### Risk judgment\n\n- Concrete risk item with enough words for validation."
     checks.append(("bold sentence before heading is not abrupt truncation", "abrupt_transition_before_heading" not in contract_engine._truncation_warnings(bold_heading_transition)))
+    short_complete_bullet_transition = "- gyors demonstrálhatóság.\n\n#### Fő korlátok\n\n- Concrete risk item with enough words for validation."
+    checks.append(("short complete bullet before heading is not abrupt truncation", "abrupt_transition_before_heading" not in contract_engine._truncation_warnings(short_complete_bullet_transition)))
+    colon_before_nested_heading = "A phased market entry model is recommended:\n\n#### Phase 1\n\n- Concrete phase item with enough words for validation."
+    checks.append(("colon before nested heading is not abrupt truncation", "abrupt_transition_before_heading" not in contract_engine._truncation_warnings(colon_before_nested_heading)))
+    nested_handoff_transition = """AgentReady should be treated as a pre-production prototype with realistic limits.
+
+## Current state of the codebase
+### What it already does well
+- Accepts local repository input and produces useful assessment artifacts.
+- Keeps downstream handoff guidance aligned with evidence from the codebase.
+
+## Recommended final direction
+- Improve validation while preserving the existing contract output format."""
+    checks.append(("nested headings inside no-section handoff are not abrupt truncation", "abrupt_transition_before_heading" not in contract_engine._truncation_warnings(nested_handoff_transition)))
+    abrupt_transition = "This sentence introduces an unfinished list:\n\n## Next section\n\nCompleted body text after heading."
+    checks.append(("dangling colon before heading is still detected", "abrupt_transition_before_heading" in contract_engine._truncation_warnings(abrupt_transition)))
 
     business_contract_validation_engine = SynthesisEngine(
         fake_judge, "evidence", "matrix",
@@ -5955,6 +6175,14 @@ Peldak:
     p.add_argument("--output-dir", default=".", metavar="KONYVTAR")
     p.add_argument("--lang",       default="hu", choices=["hu","en"])
     p.add_argument("--max-chars",  type=int, default=DEFAULT_MAX_CHARS)
+    p.add_argument("--max-source-files", type=int, default=1000,
+                   help="Maximum number of source files to ingest")
+    p.add_argument("--max-source-chars", type=int, default=None,
+                   help="Maximum total source text characters after per-file limits")
+    p.add_argument("--max-nested-archive-depth", type=int, default=2,
+                   help="Maximum nested ZIP/tar archive depth")
+    p.add_argument("--show-ingestion-summary", action="store_true",
+                   help="Print repository map and ingestion summary after loading sources")
     p.add_argument("--estimate",   action="store_true")
     p.add_argument("--no-docx",    action="store_true")
     p.add_argument("--resume",     metavar="LOG.json")
@@ -6040,12 +6268,36 @@ Peldak:
     # BetĂ¶ltĂ©s
     if all_sources:
         print(f"\n{'â•'*64}\nđź“Ą  FORRASANYAGOK\n{'â•'*64}")
-        items = load_sources(all_sources, args.max_chars)
+        items = load_sources(
+            all_sources,
+            args.max_chars,
+            max_source_files=args.max_source_files,
+            max_source_chars=args.max_source_chars,
+            max_nested_archive_depth=args.max_nested_archive_depth,
+            show_summary=args.show_ingestion_summary,
+        )
     else:
         print(_yellow("\n[--task-profile-only: nincs forras, csak prompt alapjan keszul profil]"))
         items = []
 
     RUN_METADATA.clear()
+    ingestion_metadata = get_last_ingestion_metadata() if all_sources else {
+        "source_count": 0,
+        "text_file_count": 0,
+        "image_file_count": 0,
+        "skipped_file_count": 0,
+        "total_chars_before_limits": 0,
+        "total_chars_after_limits": 0,
+        "repo_map": {},
+        "detected_languages": [],
+        "detected_frameworks": [],
+        "important_files": [],
+        "skipped_files": [],
+        "truncated_files": [],
+        "nested_archives_processed": [],
+        "redaction_summary": {"total_redactions": 0, "by_type": {}},
+    }
+    RUN_METADATA["ingestion"] = ingestion_metadata
     RUN_METADATA["resolved_scenario"] = scenario_summary(resolved_scenario)
     task_profile = build_task_profile(user_prompt, items, args.lang, args.scenario)
     RUN_METADATA["task_profile"] = task_profile_to_dict(task_profile)
