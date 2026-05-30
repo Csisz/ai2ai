@@ -26,6 +26,7 @@ output/
 outputs/
 logs/
 *.log
+.ai2ai_sessions/
 
 # Generated artifacts
 debate_log.json

@@ -130,7 +130,7 @@ FastAPI is not installed. Install API dependencies first.
 Install API dependencies only when you want to run the server:
 
 ```powershell
-pip install fastapi uvicorn
+pip install -r requirements-api.txt
 ```
 
 Start the API:
